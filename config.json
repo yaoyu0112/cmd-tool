@@ -1,0 +1,9 @@
+{
+    "ftp_host": "ftp.example.com",
+    "ftp_user": "testuser",
+    "ftp_pass": "123456",
+    "cmd_working_dir": "D:/work/CTBC/FrontEnd",
+    "cmd_command": "ng build",
+    "cmd_copy_source": "D:/work/CTBC/FrontEnd/dist/pspf",
+    "ftp_target_path": "/upload/test_folder"
+  }
