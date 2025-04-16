@@ -25,19 +25,22 @@ class SettingsTab(QWidget):
 
         ftp_group = QGroupBox("SFTP 設定")
         ftp_layout = QVBoxLayout()
-        self.ftp_host_input = QLineEdit()
-        self.ftp_user_input = QLineEdit()
-        self.ftp_pass_input = QLineEdit()
+        self.sftp_host_input = QLineEdit()
+        self.sftp_port_input = QLineEdit()
+        self.sftp_user_input = QLineEdit()
+        self.sftp_pass_input = QLineEdit()
 
-        for widget in (self.ftp_host_input, self.ftp_user_input, self.ftp_pass_input):
+        for widget in (self.sftp_host_input, self.sftp_port_input, self.sftp_user_input, self.sftp_pass_input):
             widget.setReadOnly(True)
 
         ftp_layout.addWidget(QLabel("SFTP 主機名稱："))
-        ftp_layout.addWidget(self.ftp_host_input)
+        ftp_layout.addWidget(self.sftp_host_input)
+        ftp_layout.addWidget(QLabel("SFTP 連接埠："))
+        ftp_layout.addWidget(self.sftp_port_input)
         ftp_layout.addWidget(QLabel("使用者名稱："))
-        ftp_layout.addWidget(self.ftp_user_input)
+        ftp_layout.addWidget(self.sftp_user_input)
         ftp_layout.addWidget(QLabel("密碼："))
-        ftp_layout.addWidget(self.ftp_pass_input)
+        ftp_layout.addWidget(self.sftp_pass_input)
         ftp_group.setLayout(ftp_layout)
         layout.addWidget(ftp_group)
 
@@ -46,13 +49,13 @@ class SettingsTab(QWidget):
         self.cmd_working_dir_input = QLineEdit()
         self.cmd_command_input = QLineEdit()
         self.cmd_copy_source_input = QLineEdit()
-        self.ftp_target_path_input = QLineEdit()
+        self.sftp_target_path_input = QLineEdit()
 
         for widget in (
             self.cmd_working_dir_input,
             self.cmd_command_input,
             self.cmd_copy_source_input,
-            self.ftp_target_path_input
+            self.sftp_target_path_input
         ):
             widget.setReadOnly(True)
 
@@ -63,7 +66,7 @@ class SettingsTab(QWidget):
         cmd_layout.addWidget(QLabel("複製資料夾來源："))
         cmd_layout.addWidget(self.cmd_copy_source_input)
         cmd_layout.addWidget(QLabel("SFTP 目標路徑："))
-        cmd_layout.addWidget(self.ftp_target_path_input)
+        cmd_layout.addWidget(self.sftp_target_path_input)
         cmd_group.setLayout(cmd_layout)
         layout.addWidget(cmd_group)
 
@@ -86,22 +89,24 @@ class SettingsTab(QWidget):
                 print(f"❌ 讀取 JSON 錯誤: {e}")
 
     def fill_fields(self, data):
-        self.ftp_host_input.setText(data.get("ftp_host", ""))
-        self.ftp_user_input.setText(data.get("ftp_user", ""))
-        self.ftp_pass_input.setText(data.get("ftp_pass", ""))
+        self.sftp_host_input.setText(data.get("sftp_host", ""))
+        self.sftp_port_input.setText(str(data.get("sftp_port", "")))
+        self.sftp_user_input.setText(data.get("sftp_user", ""))
+        self.sftp_pass_input.setText(data.get("sftp_pass", ""))
         self.cmd_working_dir_input.setText(data.get("cmd_working_dir", ""))
         self.cmd_command_input.setText(data.get("cmd_command", ""))
         self.cmd_copy_source_input.setText(data.get("cmd_copy_source", ""))
-        self.ftp_target_path_input.setText(data.get("ftp_target_path", ""))
+        self.sftp_target_path_input.setText(data.get("sftp_target_path", ""))
 
     def apply_settings(self):
-        self.ftp_host = self.ftp_host_input.text()
-        self.ftp_user = self.ftp_user_input.text()
-        self.ftp_pass = self.ftp_pass_input.text()
+        self.sftp_host = self.sftp_host_input.text()
+        self.sftp_port = self.sftp_port_input.text()
+        self.sftp_user = self.sftp_user_input.text()
+        self.sftp_pass = self.sftp_pass_input.text()
         self.cmd_working_dir = self.cmd_working_dir_input.text()
         self.cmd_command = self.cmd_command_input.text()
         self.cmd_copy_source = self.cmd_copy_source_input.text()
-        self.ftp_target_path = self.ftp_target_path_input.text()
+        self.sftp_target_path = self.sftp_target_path_input.text()
 
         if not self.connect_sftp(): return
         if not self.change_working_directory(): return
@@ -112,11 +117,17 @@ class SettingsTab(QWidget):
 
     def connect_sftp(self):
         try:
+            port = int(self.sftp_port) if self.sftp_port.strip() else 22
             self.ssh = paramiko.SSHClient()
             self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            self.ssh.connect(self.ftp_host, username=self.ftp_user, password=self.ftp_pass)
+            self.ssh.connect(
+                self.sftp_host,
+                port=port,
+                username=self.sftp_user,
+                password=self.sftp_pass
+            )
             self.sftp = self.ssh.open_sftp()
-            self.output.append("✅ SFTP 連線成功！\n")
+            self.output.append(f"✅ SFTP 連線成功（port: {port}）！\n")
             return True
         except Exception as e:
             self.output.append(f"❌ SFTP 連線失敗：{e}\n")
@@ -154,14 +165,14 @@ class SettingsTab(QWidget):
 
     def clean_target_folder(self):
         try:
-            self.delete_sftp_folder_recursively(self.ftp_target_path)
-            self.output.append(f"🗑️ 已刪除 SFTP 上同名資料夾：{self.ftp_target_path}\n")
+            self.delete_sftp_folder_recursively(self.sftp_target_path)
+            self.output.append(f"🗑️ 已刪除 SFTP 上同名資料夾：{self.sftp_target_path}\n")
         except Exception:
-            pass  # 如果本來就不存在可忽略
+            pass
 
         try:
-            self.ensure_sftp_directory_exists(self.ftp_target_path)
-            self.output.append(f"✅ 已建立新資料夾：{self.ftp_target_path}\n")
+            self.ensure_sftp_directory_exists(self.sftp_target_path)
+            self.output.append(f"✅ 已建立新資料夾：{self.sftp_target_path}\n")
             return True
         except Exception as e:
             self.output.append(f"❌ 建立資料夾失敗：{e}\n")
@@ -184,7 +195,7 @@ class SettingsTab(QWidget):
             for filename in files:
                 fullpath = os.path.join(root, filename)
                 relative_path = os.path.relpath(fullpath, self.cmd_copy_source).replace("\\", "/")
-                sftp_path = os.path.join(self.ftp_target_path, relative_path).replace("\\", "/")
+                sftp_path = os.path.join(self.sftp_target_path, relative_path).replace("\\", "/")
 
                 try:
                     dir_path = os.path.dirname(sftp_path)
@@ -204,4 +215,4 @@ class SettingsTab(QWidget):
             try:
                 self.sftp.mkdir(current)
             except IOError:
-                pass  # 資料夾已存在
+                pass

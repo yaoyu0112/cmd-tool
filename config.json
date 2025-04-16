@@ -1,9 +1,10 @@
 {
-  "ftp_host": "172.24.75.224",
-  "ftp_user": "apadmin",
-  "ftp_pass": "1qaz@WSX",
+  "sftp_host": "172.24.75.224",
+  "sftp_port": 22,
+  "sftp_user": "apadmin",
+  "sftp_pass": "1qaz@WSX",
   "cmd_working_dir": "C:/Users/2400193/Desktop/project/frontend",
   "cmd_command": "git pull && ng build",
   "cmd_copy_source": "C:/Users/2400193/Desktop/project/frontend/dist/pspf",
-  "ftp_target_path": "/pspfap/jboss-eap-8.0/welcome-content"
+  "sftp_target_path": "/pspfap/jboss-eap-8.0/welcome-content"
 }
