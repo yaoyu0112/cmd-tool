@@ -1,9 +1,9 @@
 {
-    "ftp_host": "ftp.example.com",
-    "ftp_user": "testuser",
-    "ftp_pass": "123456",
-    "cmd_working_dir": "D:/work/CTBC/FrontEnd",
-    "cmd_command": "ng build",
-    "cmd_copy_source": "D:/work/CTBC/FrontEnd/dist/pspf",
-    "ftp_target_path": "/upload/test_folder"
-  }
+  "ftp_host": "172.24.75.224",
+  "ftp_user": "apadmin",
+  "ftp_pass": "1qaz@WSX",
+  "cmd_working_dir": "C:/Users/2400193/Desktop/project/frontend",
+  "cmd_command": "git pull && ng build",
+  "cmd_copy_source": "C:/Users/2400193/Desktop/project/frontend/dist/pspf",
+  "ftp_target_path": "/pspfap/jboss-eap-8.0/welcome-content"
+}

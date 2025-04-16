@@ -9,14 +9,14 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 class CmdTab(QWidget):
-    def __init__(self, output, ftp_tab=None):
+    def __init__(self, output, sftp_tab=None):
         """
         :param output: QTextEdit，用來顯示主輸出
-        :param ftp_tab: FtpTab 實例，可使用其 FTP 上傳功能
+        :param sftp_tab: FtpTab 實例，可使用其 FTP 上傳功能
         """
         super().__init__()
         self.output = output
-        self.ftp_tab = ftp_tab
+        self.sftp_tab = sftp_tab
         self.working_dir = None
         self.init_ui()
 
@@ -163,7 +163,7 @@ class CmdTab(QWidget):
             self.log(f"❌ 複製失敗：{e}\n")
 
     def upload_to_ftp(self):
-        if not self.ftp_tab:
+        if not self.sftp_tab:
             self.log("❌ 未設定 FTP 模組，無法上傳！\n")
             return
 
@@ -179,7 +179,7 @@ class CmdTab(QWidget):
             self.upload_directory(source, ftp_target)
         else:
             # 單檔上傳
-            self.ftp_tab.upload_file(source, ftp_target)
+            self.sftp_tab.upload_file(source, ftp_target)
 
     def upload_directory(self, local_dir, remote_dir):
         """
@@ -190,7 +190,7 @@ class CmdTab(QWidget):
             remote_subdir = os.path.join(remote_dir, relative_path).replace("\\", "/")
             for file in files:
                 full_local_path = os.path.join(root, file)
-                self.ftp_tab.upload_file(full_local_path, remote_subdir)
+                self.sftp_tab.upload_file(full_local_path, remote_subdir)
 
     def log(self, message: str):
         """
