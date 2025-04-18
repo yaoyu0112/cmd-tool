@@ -165,10 +165,10 @@ class SettingsTab(QWidget):
 
     def clean_target_folder(self):
         try:
-            self.delete_sftp_folder_recursively(self.sftp_target_path)
+            self.delete_pspf_folder(self.sftp_target_path)
             self.output.append(f"🗑️ 已刪除 SFTP 上同名資料夾：{self.sftp_target_path}\n")
         except Exception:
-            pass
+            return False
 
         try:
             self.ensure_sftp_directory_exists(self.sftp_target_path)
@@ -178,17 +178,29 @@ class SettingsTab(QWidget):
             self.output.append(f"❌ 建立資料夾失敗：{e}\n")
             return False
 
-    def delete_sftp_folder_recursively(self, path):
+    def delete_pspf_folder(self, path):
         try:
-            for item in self.sftp.listdir_attr(path):
-                full_path = os.path.join(path, item.filename).replace("\\", "/")
-                if paramiko.S_ISDIR(item.st_mode):
-                    self.delete_sftp_folder_recursively(full_path)
-                else:
-                    self.sftp.remove(full_path)
-            self.sftp.rmdir(path)
+            items = self.sftp.listdir_attr(path)
+            for item in items:
+                if item.filename == "pspf" and paramiko.S_ISDIR(item.st_mode):
+                    target_path = os.path.join(path, "pspf").replace("\\", "/")
+                    self._delete_folder_contents(target_path)
+                    self.sftp.rmdir(target_path)
+                    self.output.append("✅ 資料夾 'pspf' 已成功刪除\n")
+                    return
+            self.output.append("ℹ️ 未找到 'pspf' 資料夾\n")
         except Exception as e:
-            self.output.append(f"⚠️ 刪除舊資料夾失敗或不存在：{e}\n")
+            self.output.append(f"⚠️ 無法刪除 'pspf' 資料夾：{e}\n")
+
+    def _delete_folder_contents(self, folder_path):
+        # 遞迴刪除內容（但只針對 pspf 裡面的內容）
+        for item in self.sftp.listdir_attr(folder_path):
+            full_path = os.path.join(folder_path, item.filename).replace("\\", "/")
+            if paramiko.S_ISDIR(item.st_mode):
+                self._delete_folder_contents(full_path)
+                self.sftp.rmdir(full_path)
+            else:
+                self.sftp.remove(full_path)
 
     def upload_directory(self):
         for root, dirs, files in os.walk(self.cmd_copy_source):
