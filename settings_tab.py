@@ -1,8 +1,7 @@
-# settings_tab.py
 import json
 import os
 import subprocess
-import paramiko  # 使用 paramiko 來支援 SFTP
+import paramiko
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QPushButton,
     QLineEdit, QFileDialog, QGroupBox
@@ -12,18 +11,17 @@ class SettingsTab(QWidget):
     def __init__(self, output_display):
         super().__init__()
         self.output = output_display
-        self.sftp = None
         self.ssh = None
         self.init_ui()
 
     def init_ui(self):
         layout = QVBoxLayout()
-
         load_button = QPushButton("匯入 JSON 設定檔")
         load_button.clicked.connect(self.load_json_file)
         layout.addWidget(load_button)
 
-        sftp_group = QGroupBox("SFTP 設定")
+        # SFTP/SSH 設定區塊
+        sftp_group = QGroupBox("SSH 設定")
         sftp_layout = QVBoxLayout()
         self.sftp_host_input = QLineEdit()
         self.sftp_port_input = QLineEdit()
@@ -33,9 +31,9 @@ class SettingsTab(QWidget):
         for widget in (self.sftp_host_input, self.sftp_port_input, self.sftp_user_input, self.sftp_pass_input):
             widget.setReadOnly(True)
 
-        sftp_layout.addWidget(QLabel("SFTP 主機名稱："))
+        sftp_layout.addWidget(QLabel("SSH 主機名稱："))
         sftp_layout.addWidget(self.sftp_host_input)
-        sftp_layout.addWidget(QLabel("SFTP 連接埠："))
+        sftp_layout.addWidget(QLabel("SSH 連接埠："))
         sftp_layout.addWidget(self.sftp_port_input)
         sftp_layout.addWidget(QLabel("使用者名稱："))
         sftp_layout.addWidget(self.sftp_user_input)
@@ -44,6 +42,7 @@ class SettingsTab(QWidget):
         sftp_group.setLayout(sftp_layout)
         layout.addWidget(sftp_group)
 
+        # CMD 控制區塊
         cmd_group = QGroupBox("CMD 控制")
         cmd_layout = QVBoxLayout()
         self.cmd_working_dir_input = QLineEdit()
@@ -65,7 +64,7 @@ class SettingsTab(QWidget):
         cmd_layout.addWidget(self.cmd_command_input)
         cmd_layout.addWidget(QLabel("複製資料夾來源："))
         cmd_layout.addWidget(self.cmd_copy_source_input)
-        cmd_layout.addWidget(QLabel("SFTP 目標路徑："))
+        cmd_layout.addWidget(QLabel("遠端目標路徑："))
         cmd_layout.addWidget(self.sftp_target_path_input)
         cmd_group.setLayout(cmd_layout)
         layout.addWidget(cmd_group)
@@ -86,7 +85,7 @@ class SettingsTab(QWidget):
                     data = json.load(f)
                 self.fill_fields(data)
             except Exception as e:
-                print(f"❌ 讀取 JSON 錯誤: {e}")
+                self.output.append(f"❌ 讀取 JSON 錯誤: {e}\n")
 
     def fill_fields(self, data):
         self.sftp_host_input.setText(data.get("sftp_host", ""))
@@ -99,47 +98,61 @@ class SettingsTab(QWidget):
         self.sftp_target_path_input.setText(data.get("sftp_target_path", ""))
 
     def apply_settings(self):
+        # 取得 SFTP 伺服器的主機名稱或 IP
         self.sftp_host = self.sftp_host_input.text()
-        self.sftp_port = self.sftp_port_input.text()
+        
+        # 取得 SFTP 連接埠，若未填則預設為 22
+        self.sftp_port = int(self.sftp_port_input.text().strip() or "22")
+        
+        # 取得 SFTP 使用者帳號
         self.sftp_user = self.sftp_user_input.text()
+        
+        # 取得 SFTP 使用者密碼
         self.sftp_pass = self.sftp_pass_input.text()
+        
+        # 取得遠端工作目錄（執行指令所在位置）
         self.cmd_working_dir = self.cmd_working_dir_input.text()
+        
+        # 取得要在遠端執行的指令
         self.cmd_command = self.cmd_command_input.text()
+        
+        # 取得要複製上傳的本地檔案路徑
         self.cmd_copy_source = self.cmd_copy_source_input.text()
+        
+        # 取得 SFTP 目標儲存路徑
         self.sftp_target_path = self.sftp_target_path_input.text()
 
-        if not self.connect_sftp(): return
-        if not self.change_working_directory(): return
-        if not self.run_cmd_command(): return
-        if not self.upload_folder_to_sftp(): return
+        # 依序執行下列步驟，若任一步驟失敗則中斷流程
 
+        # 建立 SSH 連線
+        if not self.connect_ssh(): return
+
+        # 切換到指定的工作目錄
+        if not self.change_working_directory(): return
+
+        # 執行指定的遠端指令
+        if not self.run_cmd_command(): return
+
+        # 清理舊檔並上傳新檔
+        if not self.remote_cleanup_and_upload(): return
+
+        # 所有步驟成功後顯示成功訊息
         self.output.append("✅ 設定已成功套用！\n")
 
-    def connect_sftp(self):
+    def connect_ssh(self):
         try:
-            port = int(self.sftp_port) if self.sftp_port.strip() else 22
             self.ssh = paramiko.SSHClient()
             self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             self.ssh.connect(
                 self.sftp_host,
-                port=port,
+                port=self.sftp_port,
                 username=self.sftp_user,
                 password=self.sftp_pass
             )
-            self.sftp = self.ssh.open_sftp()
-            self.output.append(f"✅ SFTP 連線成功（port: {port}）！\n")
+            self.output.append(f"✅ SSH 連線成功（port: {self.sftp_port}）\n")
             return True
         except Exception as e:
-            self.output.append(f"❌ SFTP 連線失敗：{e}\n")
-            return False
-
-    def change_working_directory(self):
-        try:
-            os.chdir(self.cmd_working_dir)
-            self.output.append(f"✅ 切換至資料夾：{self.cmd_working_dir}\n")
-            return True
-        except Exception:
-            self.output.append(f"❌ 找不到資料夾：{self.cmd_working_dir}\n")
+            self.output.append(f"❌ SSH 連線失敗：{e}\n")
             return False
 
     def run_cmd_command(self):
@@ -153,78 +166,49 @@ class SettingsTab(QWidget):
             self.output.append(f"❌ 執行 CMD 指令時發生錯誤：{e}\n")
             return False
 
-    def upload_folder_to_sftp(self):
-        if not os.path.isdir(self.cmd_copy_source):
-            self.output.append(f"❌ 來源資料夾不存在：{self.cmd_copy_source}\n")
-            return False
-
-        if not self.clean_target_folder():
-            return False
-
-        return self.upload_directory()
-
-    def clean_target_folder(self):
+    def change_working_directory(self):
         try:
-            self.delete_pspf_folder(self.sftp_target_path)
-            self.output.append(f"🗑️ 已刪除 SFTP 上同名資料夾：{self.sftp_target_path}\n")
+            os.chdir(self.cmd_working_dir)
+            self.output.append(f"✅ 切換至資料夾：{self.cmd_working_dir}\n")
+            return True
         except Exception:
+            self.output.append(f"❌ 找不到資料夾：{self.cmd_working_dir}\n")
             return False
 
+    def remote_cleanup_and_upload(self):
+        # 刪除目標路徑下的 pspf 資料夾（如果存在）
+        cleanup_cmd = f"rm -rf {self.sftp_target_path}/pspf"
+        if not self.run_remote_command(cleanup_cmd, "🗑️ 刪除遠端 pspf 資料夾"):
+            return False
+
+        # 確保目標資料夾存在
+        mkdir_cmd = f"mkdir -p {self.sftp_target_path}"
+        if not self.run_remote_command(mkdir_cmd, "✅ 建立遠端目標資料夾"):
+            return False
+
+        # 使用 scp 上傳整個資料夾（需要 scp 已安裝）
         try:
-            self.ensure_sftp_directory_exists(self.sftp_target_path)
-            self.output.append(f"✅ 已建立新資料夾：{self.sftp_target_path}\n")
+            subprocess.run([
+                "scp", "-r",
+                self.cmd_copy_source,
+                f"{self.sftp_user}@{self.sftp_host}:{self.sftp_target_path}/"
+            ], check=True)
+            self.output.append(f"✅ 資料夾已上傳至遠端：{self.sftp_target_path}\n")
+            return True
+        except subprocess.CalledProcessError as e:
+            self.output.append(f"❌ SCP 上傳失敗：{e}\n")
+            return False
+
+    def run_remote_command(self, command, description="執行指令"):
+        try:
+            stdin, stdout, stderr = self.ssh.exec_command(command)
+            out = stdout.read().decode()
+            err = stderr.read().decode()
+            if out:
+                self.output.append(f"{description} 成功：\n{out}")
+            if err:
+                self.output.append(f"{description} 錯誤：\n{err}")
             return True
         except Exception as e:
-            self.output.append(f"❌ 建立資料夾失敗：{e}\n")
+            self.output.append(f"❌ 遠端指令失敗：{command} - {e}\n")
             return False
-
-    def delete_pspf_folder(self, path):
-        try:
-            items = self.sftp.listdir_attr(path)
-            for item in items:
-                if item.filename == "pspf" and paramiko.S_ISDIR(item.st_mode):
-                    target_path = os.path.join(path, "pspf").replace("\\", "/")
-                    self._delete_folder_contents(target_path)
-                    self.sftp.rmdir(target_path)
-                    self.output.append("✅ 資料夾 'pspf' 已成功刪除\n")
-                    return
-            self.output.append("ℹ️ 未找到 'pspf' 資料夾\n")
-        except Exception as e:
-            self.output.append(f"⚠️ 無法刪除 'pspf' 資料夾：{e}\n")
-
-    def _delete_folder_contents(self, folder_path):
-        # 遞迴刪除內容（但只針對 pspf 裡面的內容）
-        for item in self.sftp.listdir_attr(folder_path):
-            full_path = os.path.join(folder_path, item.filename).replace("\\", "/")
-            if paramiko.S_ISDIR(item.st_mode):
-                self._delete_folder_contents(full_path)
-                self.sftp.rmdir(full_path)
-            else:
-                self.sftp.remove(full_path)
-
-    def upload_directory(self):
-        for root, dirs, files in os.walk(self.cmd_copy_source):
-            for filename in files:
-                fullpath = os.path.join(root, filename)
-                relative_path = os.path.relpath(fullpath, self.cmd_copy_source).replace("\\", "/")
-                sftp_path = os.path.join(self.sftp_target_path, relative_path).replace("\\", "/")
-
-                try:
-                    dir_path = os.path.dirname(sftp_path)
-                    self.ensure_sftp_directory_exists(dir_path)
-                    self.sftp.put(fullpath, sftp_path)
-                    self.output.append(f"✅ 上傳檔案：{sftp_path}\n")
-                except Exception as e:
-                    self.output.append(f"❌ 上傳檔案失敗：{sftp_path} - {e}\n")
-                    return False
-        return True
-
-    def ensure_sftp_directory_exists(self, dir_path):
-        parts = dir_path.strip("/").split("/")
-        current = ""
-        for part in parts:
-            current = f"{current}/{part}" if current else f"/{part}"
-            try:
-                self.sftp.mkdir(current)
-            except IOError:
-                pass
