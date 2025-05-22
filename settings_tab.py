@@ -12,6 +12,7 @@ class SettingsTab(QWidget):
         super().__init__()
         self.output = output_display
         self.ssh = None
+        self.sftp = None
         self.init_ui()
 
     def init_ui(self):
@@ -98,45 +99,43 @@ class SettingsTab(QWidget):
         self.sftp_target_path_input.setText(data.get("sftp_target_path", ""))
 
     def apply_settings(self):
-        # 取得 SFTP 伺服器的主機名稱或 IP
+        # 從介面取得 SSH/SFTP 主機名稱
         self.sftp_host = self.sftp_host_input.text()
         
-        # 取得 SFTP 連接埠，若未填則預設為 22
+        # 取得連接埠，若欄位為空則預設為 22（SSH 預設 port）
         self.sftp_port = int(self.sftp_port_input.text().strip() or "22")
         
-        # 取得 SFTP 使用者帳號
+        # 取得使用者帳號
         self.sftp_user = self.sftp_user_input.text()
         
-        # 取得 SFTP 使用者密碼
+        # 取得密碼
         self.sftp_pass = self.sftp_pass_input.text()
         
-        # 取得遠端工作目錄（執行指令所在位置）
+        # 取得本機要執行命令的工作目錄
         self.cmd_working_dir = self.cmd_working_dir_input.text()
         
-        # 取得要在遠端執行的指令
+        # 取得要執行的本機命令（例如 build、打包指令）
         self.cmd_command = self.cmd_command_input.text()
         
-        # 取得要複製上傳的本地檔案路徑
+        # 取得要上傳的資料來源資料夾（通常是 build 完的資料夾）
         self.cmd_copy_source = self.cmd_copy_source_input.text()
         
-        # 取得 SFTP 目標儲存路徑
+        # 設定遠端主機上要儲存的目標路徑
         self.sftp_target_path = self.sftp_target_path_input.text()
 
-        # 依序執行下列步驟，若任一步驟失敗則中斷流程
-
-        # 建立 SSH 連線
+        # 建立 SSH 連線，若失敗則中止
         if not self.connect_ssh(): return
 
-        # 切換到指定的工作目錄
+        # 切換至本機指定的工作目錄（避免 CMD 指令失效）
         if not self.change_working_directory(): return
 
-        # 執行指定的遠端指令
+        # 執行本機 CMD 指令（例如打包指令）
         if not self.run_cmd_command(): return
 
-        # 清理舊檔並上傳新檔
+        # 清除遠端舊檔並上傳新檔案（透過 SFTP 處理）
         if not self.remote_cleanup_and_upload(): return
 
-        # 所有步驟成功後顯示成功訊息
+        # 若以上步驟皆成功，顯示成功訊息
         self.output.append("✅ 設定已成功套用！\n")
 
     def connect_ssh(self):
@@ -149,10 +148,11 @@ class SettingsTab(QWidget):
                 username=self.sftp_user,
                 password=self.sftp_pass
             )
-            self.output.append(f"✅ SSH 連線成功（port: {self.sftp_port}）\n")
+            self.sftp = self.ssh.open_sftp()
+            self.output.append(f"✅ SSH & SFTP 連線成功（port: {self.sftp_port}）\n")
             return True
         except Exception as e:
-            self.output.append(f"❌ SSH 連線失敗：{e}\n")
+            self.output.append(f"❌ SSH/SFTP 連線失敗：{e}\n")
             return False
 
     def run_cmd_command(self):
@@ -176,27 +176,20 @@ class SettingsTab(QWidget):
             return False
 
     def remote_cleanup_and_upload(self):
-        # 刪除目標路徑下的 pspf 資料夾（如果存在）
         cleanup_cmd = f"rm -rf {self.sftp_target_path}/pspf"
         if not self.run_remote_command(cleanup_cmd, "🗑️ 刪除遠端 pspf 資料夾"):
             return False
 
-        # 確保目標資料夾存在
         mkdir_cmd = f"mkdir -p {self.sftp_target_path}"
         if not self.run_remote_command(mkdir_cmd, "✅ 建立遠端目標資料夾"):
             return False
 
-        # 使用 scp 上傳整個資料夾（需要 scp 已安裝）
         try:
-            subprocess.run([
-                "scp", "-r",
-                self.cmd_copy_source,
-                f"{self.sftp_user}@{self.sftp_host}:{self.sftp_target_path}/"
-            ], check=True)
-            self.output.append(f"✅ 資料夾已上傳至遠端：{self.sftp_target_path}\n")
+            self.upload_folder_sftp(self.cmd_copy_source, self.sftp_target_path)
+            self.output.append(f"✅ 資料夾已透過 SFTP 上傳至遠端：{self.sftp_target_path}\n")
             return True
-        except subprocess.CalledProcessError as e:
-            self.output.append(f"❌ SCP 上傳失敗：{e}\n")
+        except Exception as e:
+            self.output.append(f"❌ SFTP 上傳失敗：{e}\n")
             return False
 
     def run_remote_command(self, command, description="執行指令"):
@@ -212,3 +205,18 @@ class SettingsTab(QWidget):
         except Exception as e:
             self.output.append(f"❌ 遠端指令失敗：{command} - {e}\n")
             return False
+
+    def upload_folder_sftp(self, local_path, remote_path):
+        for root, dirs, files in os.walk(local_path):
+            rel_path = os.path.relpath(root, local_path)
+            remote_dir = os.path.join(remote_path, rel_path).replace("\\", "/")
+
+            try:
+                self.sftp.chdir(remote_dir)
+            except IOError:
+                self.sftp.mkdir(remote_dir)
+
+            for file in files:
+                local_file = os.path.join(root, file)
+                remote_file = os.path.join(remote_dir, file).replace("\\", "/")
+                self.sftp.put(local_file, remote_file)
