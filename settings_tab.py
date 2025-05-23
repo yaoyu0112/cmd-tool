@@ -207,16 +207,29 @@ class SettingsTab(QWidget):
             return False
 
     def upload_folder_sftp(self, local_path, remote_path):
+        folder_name = os.path.basename(local_path.rstrip("/\\"))
+        target_root = os.path.join(remote_path, folder_name).replace("\\", "/")
+
+        # 建立 root 資料夾（即 pspf）
+        try:
+            self.sftp.chdir(target_root)
+        except IOError:
+            self.sftp.mkdir(target_root)
+            self.output.append(f"📁 建立遠端資料夾：{target_root}\n")
+
+        # 遞迴上傳子檔案與子資料夾
         for root, dirs, files in os.walk(local_path):
             rel_path = os.path.relpath(root, local_path)
-            remote_dir = os.path.join(remote_path, rel_path).replace("\\", "/")
+            remote_dir = os.path.join(target_root, rel_path).replace("\\", "/")
 
             try:
                 self.sftp.chdir(remote_dir)
             except IOError:
                 self.sftp.mkdir(remote_dir)
+                self.output.append(f"📁 建立遠端資料夾：{remote_dir}\n")
 
             for file in files:
                 local_file = os.path.join(root, file)
                 remote_file = os.path.join(remote_dir, file).replace("\\", "/")
                 self.sftp.put(local_file, remote_file)
+                self.output.append(f"📤 上傳：{local_file} ➜ {remote_file}\n")
