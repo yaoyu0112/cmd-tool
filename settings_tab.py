@@ -176,8 +176,10 @@ class SettingsTab(QWidget):
             return False
 
     def remote_cleanup_and_upload(self):
-        cleanup_cmd = f"rm -rf {self.sftp_target_path}/pspf"
-        if not self.run_remote_command(cleanup_cmd, "🗑️ 刪除遠端 pspf 資料夾"):
+        file_name = os.path.basename(self.cmd_copy_source)
+        cleanup_cmd = f"rm -rf {self.sftp_target_path}/{file_name}"
+
+        if not self.run_remote_command(cleanup_cmd, "🗑️ 刪除遠端 {file_name} 資料夾"):
             return False
 
         mkdir_cmd = f"mkdir -p {self.sftp_target_path}"
