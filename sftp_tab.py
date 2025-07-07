@@ -1,9 +1,10 @@
-#sftp_tab.py
 from PyQt6.QtWidgets import (
     QWidget, QLineEdit, QPushButton,
-    QFormLayout, QTextEdit
+    QFormLayout, QFileDialog
 )
 import paramiko
+import os
+import json
 from os.path import basename
 
 
@@ -15,8 +16,6 @@ class SftpTab(QWidget):
         :param output_display: 主視窗的 QTextEdit，用於顯示訊息
         """
         super().__init__()
-        self.sftp = None
-        self.ssh_client = None
         self.output = output_display
         self.init_ui()
 
@@ -33,11 +32,15 @@ class SftpTab(QWidget):
         test_button = QPushButton("測試 SFTP 連線")
         test_button.clicked.connect(self.test_sftp_connection)
 
+        import_button = QPushButton("📂 匯入 JSON 設定")
+        import_button.clicked.connect(self.import_json_config)
+
         layout.addRow("SFTP 主機名稱:", self.sftp_host_input)
         layout.addRow("連接埠:", self.sftp_port_input)
         layout.addRow("使用者名稱:", self.sftp_user_input)
         layout.addRow("密碼:", self.sftp_pass_input)
         layout.addRow(test_button)
+        layout.addRow(import_button)
 
         self.setLayout(layout)
 
@@ -78,9 +81,22 @@ class SftpTab(QWidget):
         except Exception as e:
             self.log(f"❌ SFTP 連線失敗：{e}\n")
 
+    def ensure_remote_dir(self, sftp, remote_dir):
+        """
+        遞迴建立遠端資料夾
+        """
+        dirs = remote_dir.strip('/').split('/')
+        path = ""
+        for d in dirs:
+            path += f"/{d}"
+            try:
+                sftp.chdir(path)
+            except IOError:
+                sftp.mkdir(path)
+
     def upload_file(self, local_path: str, remote_dir: str = "."):
         """
-        將本地檔案上傳到 SFTP 指定目錄
+        將本地檔案上傳到 SFTP 指定目錄，若遠端路徑不存在則自動建立
 
         :param local_path: 本地檔案完整路徑
         :param remote_dir: SFTP 目的資料夾（預設為目前目錄）
@@ -88,9 +104,10 @@ class SftpTab(QWidget):
         try:
             ssh, sftp = self.get_sftp_connection()
 
-            remote_path = f"{remote_dir}/{basename(local_path)}"
+            # 確保遠端目錄存在
+            self.ensure_remote_dir(sftp, remote_dir)
 
-            sftp.chdir(remote_dir)
+            remote_path = f"{remote_dir}/{basename(local_path)}"
             sftp.put(local_path, remote_path)
 
             self.log(f"✅ 上傳成功：{local_path} ➡️ SFTP:{remote_path}\n")
@@ -100,3 +117,32 @@ class SftpTab(QWidget):
 
         except Exception as e:
             self.log(f"❌ 上傳失敗：{e}\n")
+
+    def import_json_config(self):
+        """
+        匯入 JSON 設定檔，並自動填入欄位
+        JSON 格式範例:
+        {
+            "host": "example.com",
+            "port": 22,
+            "user": "username",
+            "password": "yourpassword"
+        }
+        """
+        file_name, _ = QFileDialog.getOpenFileName(self, "選擇 JSON 設定檔", "", "JSON Files (*.json)")
+        if not file_name:
+            return
+
+        try:
+            with open(file_name, "r", encoding="utf-8") as f:
+                config = json.load(f)
+
+            self.sftp_host_input.setText(config.get("host", ""))
+            self.sftp_port_input.setText(str(config.get("port", "22")))
+            self.sftp_user_input.setText(config.get("user", ""))
+            self.sftp_pass_input.setText(config.get("password", ""))
+
+            self.log(f"✅ 已匯入設定檔：{file_name}\n")
+
+        except Exception as e:
+            self.log(f"❌ 匯入 JSON 設定失敗：{e}\n")

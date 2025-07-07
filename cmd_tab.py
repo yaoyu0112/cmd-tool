@@ -1,12 +1,13 @@
-# cmd_tab.py
 import os
 import shutil
 import subprocess
+import json
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QTextEdit, QFileDialog
 )
 from PyQt6.QtCore import Qt
+
 
 class CmdTab(QWidget):
     def __init__(self, output, sftp_tab=None):
@@ -71,20 +72,25 @@ class CmdTab(QWidget):
         to_layout.addWidget(to_button)
         layout.addLayout(to_layout)
 
-        # FTP 目標
+        # SFTP 目標
         ftp_layout = QHBoxLayout()
         self.ftp_target_input = QLineEdit()
-        ftp_layout.addWidget(QLabel("FTP 目標路徑："))
+        ftp_layout.addWidget(QLabel("SFTP 目標路徑："))
         ftp_layout.addWidget(self.ftp_target_input)
         layout.addLayout(ftp_layout)
 
-        # 按鈕：本地複製、FTP 上傳
+        # 匯入設定檔按鈕
+        import_button = QPushButton("📂 匯入設定檔")
+        import_button.clicked.connect(self.import_json_config)
+        layout.addWidget(import_button)
+
+        # 按鈕：本地複製、SFTP 上傳
         btn_layout = QHBoxLayout()
         copy_button = QPushButton("📋 本地複製")
         copy_button.clicked.connect(self.copy_item)
 
-        upload_button = QPushButton("🌐 上傳到 FTP")
-        upload_button.clicked.connect(self.upload_to_ftp)
+        upload_button = QPushButton("🌐 上傳到 SFTP")
+        upload_button.clicked.connect(self.upload_to_sftp)
 
         btn_layout.addWidget(copy_button)
         btn_layout.addWidget(upload_button)
@@ -129,6 +135,9 @@ class CmdTab(QWidget):
         self.cmd_input.clear()
 
     def select_copy_source(self):
+        """
+        只選擇來源資料夾
+        """
         path = QFileDialog.getExistingDirectory(self, "選擇來源資料夾")
         if path:
             self.from_input.setText(path)
@@ -143,7 +152,7 @@ class CmdTab(QWidget):
         target = self.to_input.text().strip()
 
         if not source or not target:
-            self.log("⚠️ 請選擇來源與目標資料夾！\n")
+            self.log("⚠️ 請選擇來源與目標！\n")
             return
 
         try:
@@ -162,40 +171,60 @@ class CmdTab(QWidget):
         except Exception as e:
             self.log(f"❌ 複製失敗：{e}\n")
 
-    def upload_to_ftp(self):
+    def upload_to_sftp(self):
         if not self.sftp_tab:
-            self.log("❌ 未設定 FTP 模組，無法上傳！\n")
+            self.log("❌ 未設定 SFTP 模組，無法上傳！\n")
             return
 
         source = self.from_input.text().strip()
-        ftp_target = self.ftp_target_input.text().strip() or "/"
+        remote_target = self.ftp_target_input.text().strip() or "/"
 
         if not os.path.exists(source):
             self.log("⚠️ 請提供有效的來源路徑！\n")
             return
 
         if os.path.isdir(source):
-            # 遞迴上傳資料夾
-            self.upload_directory(source, ftp_target)
+            self.upload_directory(source, remote_target)
+        elif os.path.isfile(source):
+            self.sftp_tab.upload_file(source, remote_target, ensure_dir=True)
         else:
-            # 單檔上傳
-            self.sftp_tab.upload_file(source, ftp_target)
+            self.log("⚠️ 來源不是有效的檔案或資料夾！\n")
 
     def upload_directory(self, local_dir, remote_dir):
-        """
-        遞迴上傳整個資料夾到 FTP
-        """
         for root, dirs, files in os.walk(local_dir):
             relative_path = os.path.relpath(root, local_dir)
             remote_subdir = os.path.join(remote_dir, relative_path).replace("\\", "/")
             for file in files:
                 full_local_path = os.path.join(root, file)
-                self.sftp_tab.upload_file(full_local_path, remote_subdir)
+                self.sftp_tab.upload_file(full_local_path, remote_subdir, ensure_dir=True)
+
+    def import_json_config(self):
+        """
+        匯入 JSON 設定檔並填入來源、本地目標與 SFTP 目標路徑
+        格式：
+        {
+            "source": "來源路徑",
+            "local_target": "本地目標路徑",
+            "sftp_target": "SFTP目標路徑"
+        }
+        """
+        file_name, _ = QFileDialog.getOpenFileName(self, "選擇設定檔", "", "JSON Files (*.json)")
+        if not file_name:
+            return
+
+        try:
+            with open(file_name, "r", encoding="utf-8") as f:
+                config = json.load(f)
+
+            self.from_input.setText(config.get("source", ""))
+            self.to_input.setText(config.get("local_target", ""))
+            self.ftp_target_input.setText(config.get("sftp_target", ""))
+
+            self.log(f"✅ 已匯入設定檔：{file_name}\n")
+        except Exception as e:
+            self.log(f"❌ 匯入設定檔失敗：{e}\n")
 
     def log(self, message: str):
-        """
-        統一輸出到 CmdTab 的 output + 主視窗 output
-        """
         if self.output_display:
             self.output_display.append(message)
         if self.output:
