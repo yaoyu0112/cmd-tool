@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-with open("read.md", "r", encoding="utf-8") as fh:
+with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
@@ -34,11 +34,11 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "cmd-tool=cmd_tool:main",
+            "cmd-tool=src.main:main",
         ],
     },
     include_package_data=True,
     package_data={
-        "": ["*.json", "*.md"],
+        "src": ["*.json", "*.md"],
     },
 )
