@@ -36,9 +36,14 @@ class CMDTool(QWidget):
         self.setLayout(layout)
 
 
-if __name__ == "__main__":
+def main():
+    """主程式進入點，用於 setuptools console_scripts"""
     import sys
     app = QApplication(sys.argv)
     window = CMDTool()
     window.show()
     sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()
